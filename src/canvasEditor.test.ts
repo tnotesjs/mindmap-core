@@ -211,7 +211,7 @@ describe('脑图编辑态行内格式快捷键', () => {
     editor.destroy()
   })
 
-  it('使用幕布主键位 Cmd+Enter 删除线、Option+L 行内代码', () => {
+  it('使用 Cmd+Enter 删除线、Cmd+E 行内代码，并让 Option+L 保持为系统输入', () => {
     const first = mountEditor()
     first.input.setSelectionRange(0, first.input.value.length)
     shortcut(first.input, 'Enter')
@@ -221,16 +221,31 @@ describe('脑图编辑态行内格式快捷键', () => {
 
     const second = mountEditor()
     second.input.setSelectionRange(0, second.input.value.length)
-    const codeEvent = new KeyboardEvent('keydown', {
-      key: 'l',
-      altKey: true,
-      bubbles: true,
-      cancelable: true,
-    })
+    const codeEvent = new KeyboardEvent('keydown', { key: 'e', metaKey: true, bubbles: true, cancelable: true })
     second.input.dispatchEvent(codeEvent)
     expect(codeEvent.defaultPrevented).toBe(true)
     expect(second.node.content.raw).toBe('`alpha`')
+
+    const altL = new KeyboardEvent('keydown', { key: 'l', altKey: true, bubbles: true, cancelable: true })
+    second.input.dispatchEvent(altL)
+    expect(altL.defaultPrevented).toBe(false)
+    expect(second.node.content.raw).toBe('`alpha`')
     second.editor.destroy()
+  })
+
+  it.each([
+    ['b', '**alpha**'],
+    ['e', '`alpha`'],
+  ])('没有文本选区时 Cmd+%s 格式化整个编辑节点并保留光标', (key, expectedRaw) => {
+    const { editor, input, node } = mountEditor()
+    input.setSelectionRange(2, 2)
+
+    shortcut(input, key)
+
+    expect(node.content.raw).toBe(expectedRaw)
+    expect(document.activeElement).toBe(input)
+    expect([input.selectionStart, input.selectionEnd]).toEqual([2, 2])
+    editor.destroy()
   })
 
   it('Cmd+\\ 清除选区样式并保持编辑焦点', () => {
@@ -239,6 +254,15 @@ describe('脑图编辑态行内格式快捷键', () => {
     shortcut(input, '\\')
     expect(node.content.raw).toBe('alpha')
     expect(document.activeElement).toBe(input)
+    editor.destroy()
+  })
+
+  it('没有文本选区时 Cmd+\\ 清除整个节点样式并保留光标', () => {
+    const { editor, input, node } = mountEditor('# T\n\n- ***alpha***\n')
+    input.setSelectionRange(2, 2)
+    shortcut(input, '\\')
+    expect(node.content.raw).toBe('alpha')
+    expect([input.selectionStart, input.selectionEnd]).toEqual([2, 2])
     editor.destroy()
   })
 

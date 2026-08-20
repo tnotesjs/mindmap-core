@@ -514,7 +514,7 @@ export class CanvasEditor {
       const mod = e.metaKey || e.ctrlKey
       const key = e.key.toLowerCase()
 
-      if (mod && key === '\\' && input.selectionStart !== input.selectionEnd && !node.content.image) {
+      if (mod && key === '\\' && !node.content.image) {
         e.preventDefault()
         this.clearEditingInlineFormats()
       } else {
@@ -707,29 +707,35 @@ export class CanvasEditor {
     // 兼容常见编辑器键位，便于从旧版本迁移。
     if (mod && e.shiftKey && key === 's') return 'strike'
     if (mod && e.shiftKey && key === 'h') return 'highlight'
-    // 幕布行内代码入口为 Option/Alt+L；同时保留 Cmd/Ctrl+E 兼容键位。
-    if ((e.altKey && !mod && key === 'l') || (mod && !e.shiftKey && key === 'e')) return 'code'
+    // 行内代码采用常见编辑器键位 Cmd/Ctrl+E；Option/Alt+L 会在 macOS 输入 ¬。
+    if (mod && !e.shiftKey && key === 'e') return 'code'
     return null
   }
 
   private toggleEditingInlineFormat(format: InlineFormat): void {
     const state = this.syncEditingDisplayText()
-    if (!state || state.start === state.end) return
-    this.session.toggleNodeInlineFormat(state.node.id, state.start, state.end, format)
+    if (!state || state.input.value.length === 0) return
+    const collapsed = state.start === state.end
+    const start = collapsed ? 0 : state.start
+    const end = collapsed ? state.input.value.length : state.end
+    this.session.toggleNodeInlineFormat(state.node.id, start, end, format)
     const node = this.session.document.find(state.node.id)
     if (!node) return
     this.editingNode = node
-    this.renderEditingDraft(node.content.raw, state.start, state.end)
+    this.renderEditingDraft(node.content.raw, state.start, collapsed ? state.start : state.end)
   }
 
   private clearEditingInlineFormats(): void {
     const state = this.syncEditingDisplayText()
-    if (!state || state.start === state.end) return
-    this.session.clearNodeInlineFormats(state.node.id, state.start, state.end)
+    if (!state || state.input.value.length === 0) return
+    const collapsed = state.start === state.end
+    const start = collapsed ? 0 : state.start
+    const end = collapsed ? state.input.value.length : state.end
+    this.session.clearNodeInlineFormats(state.node.id, start, end)
     const node = this.session.document.find(state.node.id)
     if (!node) return
     this.editingNode = node
-    this.renderEditingDraft(node.content.raw, state.start, state.end)
+    this.renderEditingDraft(node.content.raw, state.start, collapsed ? state.start : state.end)
   }
 
   private selectedLinkUrl(node: MindmapNode, start: number, end: number): string {
@@ -804,7 +810,7 @@ export class CanvasEditor {
     }
 
     const selectionFormat = this.inlineFormatShortcut(e, session.selectionIds.size > 1)
-    if (selectionFormat && session.selectionIds.size > 1) {
+    if (selectionFormat && session.selectionIds.size > 0) {
       e.preventDefault()
       session.formatSelectedNodes(selectionFormat)
       return
