@@ -99,6 +99,10 @@ export interface CanvasEditorEvents {
   onLinkHover?: (link: CanvasLinkHover | null) => void
   /** 节点右键菜单。null 表示关闭当前菜单。 */
   onContextMenu?: (request: CanvasContextRequest | null) => void
+  /** 请求把当前节点选择复制到系统剪贴板。 */
+  onCopySelection?: () => void
+  /** 请求把当前节点选择剪切到系统剪贴板。 */
+  onCutSelection?: () => void
 }
 
 export function createCanvasMeasurer(font = `14px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif`): TextMeasurer {
@@ -830,6 +834,16 @@ export class CanvasEditor {
     if (mod && key === 'f') {
       e.preventDefault()
       this.events.onRequestSearch?.()
+      return
+    }
+    if (mod && !e.shiftKey && key === 'c' && session.selectionIds.size > 0) {
+      e.preventDefault()
+      this.events.onCopySelection?.()
+      return
+    }
+    if (mod && !e.shiftKey && key === 'x' && session.selectionIds.size > 0) {
+      e.preventDefault()
+      this.events.onCutSelection?.()
       return
     }
     if (mod && key === 'a') {

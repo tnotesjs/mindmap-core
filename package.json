@@ -1,6 +1,6 @@
 {
   "name": "@tnotesjs/mindmap-core",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Markdown-first mind map engine used by TNotesJS web, VS Code and read-only renderers.",
   "type": "module",
   "main": "./dist/index.js",

@@ -513,6 +513,27 @@ describe('脑图节点底部菜单定位', () => {
   })
 })
 
+describe('脑图节点剪贴板快捷键', () => {
+  it.each([
+    ['c', 'onCopySelection'],
+    ['x', 'onCutSelection'],
+  ] as const)('节点选择态 Cmd+%s 发出对应剪贴板请求', (key, eventName) => {
+    const events = {
+      onCopySelection: vi.fn(),
+      onCutSelection: vi.fn(),
+    }
+    const { editor, host, input } = mountEditor('# T\n\n- alpha\n', events)
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
+    const event = new KeyboardEvent('keydown', { key, metaKey: true, bubbles: true, cancelable: true })
+
+    host.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+    expect(events[eventName]).toHaveBeenCalledOnce()
+    editor.destroy()
+  })
+})
+
 describe('脑图节点右键菜单', () => {
   it('右键未选节点改为单选并发出单主题菜单能力', () => {
     const onContextMenu = vi.fn()
