@@ -27,6 +27,24 @@ if (result.ok) {
 }
 ```
 
+### Read-only canvas
+
+```ts
+import { CanvasViewer, MindmapSession } from '@tnotesjs/mindmap-core'
+
+const session = new MindmapSession({
+  markdown: '# Notes\n\n- Topic',
+  fileName: 'notes.tn-mindmap.md',
+})
+const viewer = new CanvasViewer(element, session, { theme: 'dark' })
+
+// Keep an embedding application's theme in control.
+viewer.setTheme('light')
+```
+
+`CanvasViewer` keeps navigation, collapse/expand, links, pan and zoom, while disabling
+text editing, structural drag, paste, deletion, formatting and other document mutations.
+
 The package contains no Vue dependency. It exposes the Markdown parser and serializer, document model, history/session commands, inline formatting model, tree layout, Canvas renderer/editor, and DOM selection helpers used by rich-text adapters.
 
 ## File format

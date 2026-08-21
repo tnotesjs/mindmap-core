@@ -25,7 +25,7 @@ import {
 } from './model/inline'
 import type { InlineFormat } from './model/inline'
 import { CanvasRenderer, canvasNodeTier } from './render/canvasRenderer'
-import type { CanvasDragPreview, DropIndicator, ViewTransform } from './render/canvasRenderer'
+import type { CanvasDragPreview, CanvasThemeMode, DropIndicator, ViewTransform } from './render/canvasRenderer'
 import { hitTest } from './render/hitTest'
 import type { MindmapSession } from './session'
 import {
@@ -105,6 +105,13 @@ export interface CanvasEditorEvents {
   onCutSelection?: () => void
 }
 
+export interface CanvasEditorOptions {
+  /** Disable every document-mutating interaction while retaining viewport/navigation controls. */
+  readOnly?: boolean
+  /** Explicit embedders should use light/dark; auto preserves the standalone editor default. */
+  theme?: CanvasThemeMode
+}
+
 export function createCanvasMeasurer(font = `14px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif`): TextMeasurer {
   const canvas = document.createElement('canvas')
   const ctx = canvas.getContext('2d')!
@@ -155,21 +162,29 @@ export class CanvasEditor {
   private hoveredNodeId: string | null = null
   private pendingLinkKey: string | null = null
   private linkHoverTimer: ReturnType<typeof setTimeout> | null = null
+  private readonly readOnly: boolean
 
   constructor(
     private container: HTMLElement,
     private session: MindmapSession,
     private events: CanvasEditorEvents = {},
     measurer?: TextMeasurer,
+    options: CanvasEditorOptions = {},
   ) {
     this.measurer = measurer ?? createCanvasMeasurer()
+    this.readOnly = options.readOnly ?? false
 
     container.classList.add('mm-editor')
+    container.classList.toggle('is-readonly', this.readOnly)
     container.tabIndex = 0
     this.overlay = document.createElement('div')
     this.overlay.className = 'mm-overlay'
 
-    this.renderer = new CanvasRenderer(container, (src) => this.events.resolveImageSrc?.(src) ?? src)
+    this.renderer = new CanvasRenderer(
+      container,
+      (src) => this.events.resolveImageSrc?.(src) ?? src,
+      options.theme,
+    )
     this.renderer.onImageLoad = (src, aspect) => {
       this.imageAspects.set(src, aspect)
       this.relayout()
@@ -179,10 +194,10 @@ export class CanvasEditor {
     container.addEventListener('pointerdown', this.onPointerDown)
     container.addEventListener('click', this.onClick)
     container.addEventListener('dblclick', this.onDblClick)
-    container.addEventListener('contextmenu', this.onContextMenu)
+    if (!this.readOnly) container.addEventListener('contextmenu', this.onContextMenu)
     container.addEventListener('keydown', this.onKeydown)
     container.addEventListener('keyup', this.onKeyup)
-    container.addEventListener('paste', this.onPaste)
+    if (!this.readOnly) container.addEventListener('paste', this.onPaste)
     container.addEventListener('wheel', this.onWheel, { passive: false })
     window.addEventListener('pointermove', this.onPointerMove)
     window.addEventListener('pointerup', this.onPointerUp)
@@ -239,7 +254,7 @@ export class CanvasEditor {
     if (!this.layout) return
     this.renderer.setLayout(this.layout, {
       root: this.session.focusRootNode,
-      selection: new Set(this.session.selectionIds),
+      selection: this.readOnly ? new Set() : new Set(this.session.selectionIds),
       matches: new Set(this.session.matches),
       imageAspects: this.imageAspects,
     })
@@ -310,6 +325,10 @@ export class CanvasEditor {
   }
 
   private emitSelectionPosition(): void {
+    if (this.readOnly) {
+      this.events.onSelectionPositionChange?.(null, 0)
+      return
+    }
     const ids = this.session.selectionIds
     if (ids.size === 0) {
       this.events.onSelectionPositionChange?.(null, ids.size)
@@ -354,6 +373,10 @@ export class CanvasEditor {
     return this.transform.k
   }
 
+  setTheme(theme: CanvasThemeMode): void {
+    this.renderer.setTheme(theme)
+  }
+
   /** 展开祖先、居中并选中（搜索/大纲定位） */
   centerOnNode(id: string, select = true): void {
     this.session.expandAncestors(id)
@@ -394,6 +417,7 @@ export class CanvasEditor {
   // ---------- 内联编辑 ----------
 
   startEdit(id: string): void {
+    if (this.readOnly) return
     const node = this.session.document.find(id)
     const box = this.layout.boxes.get(id)
     if (!node || !box || this.editingInput) return
@@ -813,6 +837,23 @@ export class CanvasEditor {
       return
     }
 
+    if (this.readOnly) {
+      if (mod && key === 'f') {
+        e.preventDefault()
+        this.events.onRequestSearch?.()
+      } else if (mod && e.altKey && e.shiftKey && (e.key === '.' || e.key === '>')) {
+        e.preventDefault()
+        session.toggleCollapseAll()
+      } else if (mod && e.key === '[') {
+        e.preventDefault()
+        if (session.focusPath.length > 0) session.exitFocusTo(session.focusPath.length - 1)
+      } else if (e.key === 'Escape' && session.focusPath.length > 0) {
+        e.preventDefault()
+        session.exitFocusTo(session.focusPath.length - 1)
+      }
+      return
+    }
+
     const selectionFormat = this.inlineFormatShortcut(e, session.selectionIds.size > 1)
     if (selectionFormat && session.selectionIds.size > 0) {
       e.preventDefault()
@@ -1056,8 +1097,8 @@ export class CanvasEditor {
   private hit(ev: PointerEvent | MouseEvent) {
     const world = this.eventWorld(ev)
     return hitTest(this.layout.boxes.values(), world.x, world.y, {
-      selectedId: this.session.selectedNode?.id ?? null,
-      selectionCount: this.session.selectionIds.size,
+      selectedId: this.readOnly ? null : this.session.selectedNode?.id ?? null,
+      selectionCount: this.readOnly ? 0 : this.session.selectionIds.size,
       imageAspects: this.imageAspects,
       hoveredId: this.hoveredNodeId,
     })
@@ -1106,6 +1147,19 @@ export class CanvasEditor {
     if (ev.button !== 0 || this.editingInput) return
     this.events.onContextMenu?.(null)
     const hit = this.hit(ev)
+    if (this.readOnly) {
+      if (this.spacePressed || !hit) {
+        ev.preventDefault()
+        this.container.focus()
+        this.panState = { startX: ev.clientX, startY: ev.clientY, baseX: this.transform.x, baseY: this.transform.y }
+        this.panMoved = false
+        this.container.classList.add('is-panning')
+        return
+      }
+      ev.preventDefault()
+      this.container.focus()
+      return
+    }
     if (this.spacePressed) {
       ev.preventDefault()
       this.commitEdit()
@@ -1168,6 +1222,15 @@ export class CanvasEditor {
     const session = this.session
     const node = session.document.find(hit.id)
     if (!node) return
+    if (this.readOnly) {
+      if (hit.role === 'collapse') this.toggleCollapseWithCompensation(hit.id)
+      else if (hit.role === 'image' && node.content.image) {
+        this.events.onImagePreview?.(this.events.resolveImageSrc?.(node.content.image.src) ?? node.content.image.src)
+      }
+      this.container.focus()
+      ev.preventDefault()
+      return
+    }
     switch (hit.role) {
       case 'add': {
         // 编辑态点击右侧「+」时先提交当前主题，再新建并立即编辑子主题。
@@ -1210,6 +1273,13 @@ export class CanvasEditor {
 
   private onDblClick = (ev: MouseEvent): void => {
     if (this.suppressClick) return
+    if (this.readOnly) {
+      const world = this.eventWorld(ev)
+      if (this.renderer.hitInlineLink(world.x, world.y)) return
+      const hit = this.hit(ev)
+      if (hit?.role === 'body' && hit.id !== this.session.focusRootNode.id) this.session.focusNode(hit.id)
+      return
+    }
     const hit = this.hit(ev)
     if (hit && hit.role !== 'add' && hit.role !== 'collapse') this.startEdit(hit.id)
   }
@@ -1476,6 +1546,7 @@ export class CanvasEditor {
   }
 
   private onPaste = (e: ClipboardEvent): void => {
+    if (this.readOnly) return
     const image = [...(e.clipboardData?.items ?? [])]
       .find((item) => item.kind === 'file' && item.type.startsWith('image/'))
       ?.getAsFile()
@@ -1507,10 +1578,10 @@ export class CanvasEditor {
     this.container.removeEventListener('pointerdown', this.onPointerDown)
     this.container.removeEventListener('click', this.onClick)
     this.container.removeEventListener('dblclick', this.onDblClick)
-    this.container.removeEventListener('contextmenu', this.onContextMenu)
+    if (!this.readOnly) this.container.removeEventListener('contextmenu', this.onContextMenu)
     this.container.removeEventListener('keydown', this.onKeydown)
     this.container.removeEventListener('keyup', this.onKeyup)
-    this.container.removeEventListener('paste', this.onPaste)
+    if (!this.readOnly) this.container.removeEventListener('paste', this.onPaste)
     this.container.removeEventListener('wheel', this.onWheel)
     window.removeEventListener('pointermove', this.onPointerMove)
     window.removeEventListener('pointerup', this.onPointerUp)
@@ -1518,7 +1589,7 @@ export class CanvasEditor {
     this.renderer.destroy()
     if (this.linkHoverTimer) clearTimeout(this.linkHoverTimer)
     this.events.onContextMenu?.(null)
-    this.container.classList.remove('is-space-pan', 'is-panning', 'is-node-dragging', 'is-link-hover', 'is-control-hover')
+    this.container.classList.remove('is-readonly', 'is-space-pan', 'is-panning', 'is-node-dragging', 'is-link-hover', 'is-control-hover')
     this.selectionBoxEl?.remove()
     this.overlay.remove()
   }

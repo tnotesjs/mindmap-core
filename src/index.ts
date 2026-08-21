@@ -6,7 +6,10 @@
 export { MindmapSession } from './session'
 export type { PreparedDocumentChange, SessionEvents, SessionOptions } from './session'
 export { CanvasEditor, createCanvasMeasurer } from './canvasEditor'
-export type { CanvasContextRequest, CanvasEditorEvents, CanvasLinkHover } from './canvasEditor'
+export type { CanvasContextRequest, CanvasEditorEvents, CanvasEditorOptions, CanvasLinkHover } from './canvasEditor'
+export { CanvasViewer } from './canvasViewer'
+export type { CanvasViewerOptions } from './canvasViewer'
+export type { CanvasThemeMode } from './render/canvasRenderer'
 export { cloneSubtree, MindmapDocument, resetNodeIdCounter, restoreDoc, snapshotDoc, visibleChildren } from './model/document'
 export type { MindmapNode } from './model/document'
 export {

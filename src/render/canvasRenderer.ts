@@ -101,6 +101,12 @@ interface CanvasTheme {
   dim: string
 }
 
+/**
+ * `auto` keeps the standalone editor backward compatible by following the OS.
+ * Embedders such as VitePress should pass an explicit light/dark value instead.
+ */
+export type CanvasThemeMode = 'auto' | 'light' | 'dark'
+
 const LIGHT: CanvasTheme = {
   canvasBg: '#f7f8fa',
   nodeBg: '#ffffff',
@@ -154,10 +160,12 @@ export class CanvasRenderer {
   private failedImages = new Set<string>()
   private drawScheduled = false
   private theme: CanvasTheme
+  private themeMode: CanvasThemeMode
   private resizeObserver: ResizeObserver
-  private darkMedia: MediaQueryList
+  private darkMedia: MediaQueryList | null
   private onDarkChange = () => {
-    this.theme = this.darkMedia.matches ? DARK : LIGHT
+    if (this.themeMode !== 'auto') return
+    this.theme = this.darkMedia?.matches ? DARK : LIGHT
     this.scheduleDraw()
   }
 
@@ -167,19 +175,39 @@ export class CanvasRenderer {
   constructor(
     private container: HTMLElement,
     private readonly resolveImageSrc: (src: string) => string = (src) => src,
+    theme: CanvasThemeMode = 'auto',
   ) {
     this.canvas = document.createElement('canvas')
     this.canvas.className = 'mm-canvas'
     this.ctx = this.canvas.getContext('2d')!
     container.append(this.canvas)
 
-    this.darkMedia = window.matchMedia('(prefers-color-scheme: dark)')
-    this.theme = this.darkMedia.matches ? DARK : LIGHT
-    this.darkMedia.addEventListener('change', this.onDarkChange)
+    this.darkMedia = typeof window.matchMedia === 'function'
+      ? window.matchMedia('(prefers-color-scheme: dark)')
+      : null
+    this.themeMode = theme
+    this.theme = this.resolveTheme(theme)
+    if (theme === 'auto') this.darkMedia?.addEventListener('change', this.onDarkChange)
 
     this.resizeObserver = new ResizeObserver(() => this.resize())
     this.resizeObserver.observe(container)
     this.resize()
+  }
+
+  private resolveTheme(theme: CanvasThemeMode): CanvasTheme {
+    if (theme === 'dark') return DARK
+    if (theme === 'light') return LIGHT
+    return this.darkMedia?.matches ? DARK : LIGHT
+  }
+
+  /** Switch palette without rebuilding layout, session, or canvas state. */
+  setTheme(theme: CanvasThemeMode): void {
+    if (theme === this.themeMode) return
+    if (this.themeMode === 'auto') this.darkMedia?.removeEventListener('change', this.onDarkChange)
+    this.themeMode = theme
+    if (theme === 'auto') this.darkMedia?.addEventListener('change', this.onDarkChange)
+    this.theme = this.resolveTheme(theme)
+    this.scheduleDraw()
   }
 
   private resize(): void {
@@ -779,7 +807,7 @@ export class CanvasRenderer {
 
   destroy(): void {
     this.resizeObserver.disconnect()
-    this.darkMedia.removeEventListener('change', this.onDarkChange)
+    if (this.themeMode === 'auto') this.darkMedia?.removeEventListener('change', this.onDarkChange)
     this.canvas.remove()
   }
 }
